@@ -67,6 +67,7 @@
 #include "misc/extra/extra.h"
 #include "opt/eslim/eSLIM.h"
 
+#include <ctype.h>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -27747,12 +27748,177 @@ usage:
   Synopsis    []
 
   Description []
-
+               
   SideEffects []
 
   SeeAlso     []
 
 ***********************************************************************/
+static char * Abc_CecNormalizeNameRange( char * pBegin, char * pEnd )
+{
+    char * pRes;
+    int i = 0;
+    while ( pBegin < pEnd && isspace((unsigned char)*pBegin) )
+        pBegin++;
+    while ( pEnd > pBegin && isspace((unsigned char)pEnd[-1]) )
+        pEnd--;
+    if ( pBegin < pEnd && *pBegin == '\\' )
+        pBegin++;
+    pRes = ABC_ALLOC( char, (pEnd - pBegin) + 1 );
+    for ( ; pBegin < pEnd; pBegin++ )
+        if ( !isspace((unsigned char)*pBegin) )
+            pRes[i++] = *pBegin;
+    pRes[i] = '\0';
+    return pRes;
+}
+
+static int Abc_CecParseYosysMatch( char * pLine, char ** ppName1, char ** ppName2 )
+{
+    char * pGold = strstr( pLine, " gold " );
+    char * pGate = strstr( pLine, " gate " );
+    char * pGateEnd;
+    if ( pGold == NULL || pGate == NULL || pGate < pGold )
+        return 0;
+    pGold += 6;
+    pGateEnd = strstr( pGate + 6, "," );
+    if ( pGateEnd == NULL )
+        pGateEnd = pLine + strlen(pLine);
+    *ppName1 = Abc_CecNormalizeNameRange( pGate + 6, pGateEnd );
+    *ppName2 = Abc_CecNormalizeNameRange( pGold, pGate );
+    if ( (*ppName1)[0] == '\0' || (*ppName2)[0] == '\0' )
+    {
+        ABC_FREE( *ppName1 );
+        ABC_FREE( *ppName2 );
+        return 0;
+    }
+    return 1;
+}
+
+static int Abc_CecParsePair( char * pLine, char ** ppName1, char ** ppName2 )
+{
+    char * pStart;
+    char * pMid;
+    char * pEnd;
+    pStart = pLine;
+    while ( *pStart && isspace((unsigned char)*pStart) )
+        pStart++;
+    if ( *pStart == '\0' || *pStart == '#' )
+        return 0;
+    pMid = pStart;
+    while ( *pMid && !isspace((unsigned char)*pMid) )
+        pMid++;
+    if ( *pMid == '\0' )
+        return 0;
+    *pMid = '\0';
+    pMid++;
+    while ( *pMid && isspace((unsigned char)*pMid) )
+        pMid++;
+    if ( *pMid == '\0' )
+        return 0;
+    pEnd = pMid;
+    while ( *pEnd && !isspace((unsigned char)*pEnd) )
+        pEnd++;
+    *pEnd = '\0';
+    *ppName1 = Abc_CecNormalizeNameRange( pStart, pStart + strlen(pStart) );
+    *ppName2 = Abc_CecNormalizeNameRange( pMid, pMid + strlen(pMid) );
+    if ( (*ppName1)[0] == '\0' || (*ppName2)[0] == '\0' )
+    {
+        ABC_FREE( *ppName1 );
+        ABC_FREE( *ppName2 );
+        return 0;
+    }
+    return 1;
+}
+
+static Vec_Ptr_t * Abc_CecNameMapRead( char * pFileName, int fVerbose )
+{
+    FILE * pFile;
+    Vec_Ptr_t * vPairs;
+    char Buffer[4096];
+    pFile = fopen( pFileName, "r" );
+    if ( pFile == NULL )
+    {
+        Abc_Print( -1, "Cannot open name map file \"%s\".\n", pFileName );
+        return NULL;
+    }
+    vPairs = Vec_PtrAlloc( 100 );
+    while ( fgets( Buffer, sizeof(Buffer), pFile ) )
+    {
+        char * pName1 = NULL;
+        char * pName2 = NULL;
+        if ( Abc_CecParseYosysMatch( Buffer, &pName1, &pName2 ) ||
+             Abc_CecParsePair( Buffer, &pName1, &pName2 ) )
+        {
+            Vec_PtrPush( vPairs, pName1 );
+            Vec_PtrPush( vPairs, pName2 );
+        }
+    }
+    fclose( pFile );
+    if ( Vec_PtrSize(vPairs) == 0 )
+    {
+        Abc_Print( -1, "Name map file \"%s\" has no usable entries.\n", pFileName );
+        Vec_PtrFree( vPairs );
+        return NULL;
+    }
+    if ( fVerbose )
+        Abc_Print( 0, "Read %d name mappings from \"%s\".\n", Vec_PtrSize(vPairs)/2, pFileName );
+    return vPairs;
+}
+
+static void Abc_CecNameMapFree( Vec_Ptr_t * vPairs )
+{
+    char * pName;
+    int i;
+    Vec_PtrForEachEntry( char *, vPairs, pName, i )
+        ABC_FREE( pName );
+    Vec_PtrFree( vPairs );
+}
+
+static int Abc_CecApplyNameMap( Abc_Ntk_t * pNtk1, Abc_Ntk_t * pNtk2, Vec_Ptr_t * vPairs, int fVerbose )
+{
+    Abc_Obj_t * pObj;
+    int i, nApplied = 0, nMiss1 = 0, nMiss2 = 0, nConflicts = 0;
+    for ( i = 0; i < Vec_PtrSize(vPairs); i += 2 )
+    {
+        char * pName1 = (char *)Vec_PtrEntry( vPairs, i );
+        char * pName2 = (char *)Vec_PtrEntry( vPairs, i+1 );
+        pObj = Abc_NtkFindCi( pNtk1, pName1 );
+        if ( pObj == NULL )
+            pObj = Abc_NtkFindCo( pNtk1, pName1 );
+        if ( pObj == NULL )
+        {
+            nMiss1++;
+            if ( fVerbose )
+                Abc_Print( 0, "Name map: \"%s\" not found in network1.\n", pName1 );
+            continue;
+        }
+        if ( Abc_NtkFindCi( pNtk2, pName2 ) == NULL && Abc_NtkFindCo( pNtk2, pName2 ) == NULL )
+        {
+            nMiss2++;
+            if ( fVerbose )
+                Abc_Print( 0, "Name map: \"%s\" not found in network2.\n", pName2 );
+            continue;
+        }
+        if ( strcmp( Abc_ObjName(pObj), pName2 ) == 0 )
+            continue;
+        if ( Nm_ManFindIdByName( pNtk1->pManName, pName2, pObj->Type ) >= 0 &&
+             Nm_ManFindIdByName( pNtk1->pManName, pName2, pObj->Type ) != pObj->Id )
+        {
+            nConflicts++;
+            if ( fVerbose )
+                Abc_Print( 0, "Name map: \"%s\" already exists in network1.\n", pName2 );
+            continue;
+        }
+        Nm_ManDeleteIdName( pNtk1->pManName, pObj->Id );
+        Abc_ObjAssignName( pObj, pName2, NULL );
+        nApplied++;
+    }
+    if ( fVerbose || nMiss1 || nMiss2 || nConflicts )
+        Abc_Print( 0, "Name map: applied %d, missing1 %d, missing2 %d, conflicts %d.\n",
+            nApplied, nMiss1, nMiss2, nConflicts );
+    return nApplied;
+}
+
 int Abc_CommandCec( Abc_Frame_t * pAbc, int argc, char ** argv )
 {
     char Buffer[16];
@@ -27769,6 +27935,7 @@ int Abc_CommandCec( Abc_Frame_t * pAbc, int argc, char ** argv )
     int nInsLimit;
     int fPartition;
     int fIgnoreNames;
+    char * pMapFile;
 
     extern void Abc_NtkCecSat( Abc_Ntk_t * pNtk1, Abc_Ntk_t * pNtk2, int nConfLimit, int nInsLimit );
     extern void Abc_NtkCecFraig( Abc_Ntk_t * pNtk1, Abc_Ntk_t * pNtk2, int nSeconds, int fVerbose );
@@ -27785,8 +27952,9 @@ int Abc_CommandCec( Abc_Frame_t * pAbc, int argc, char ** argv )
     nInsLimit  = 0;
     fPartition = 0;
     fIgnoreNames = 0;
+    pMapFile = NULL;
     Extra_UtilGetoptReset();
-    while ( ( c = Extra_UtilGetopt( argc, argv, "TCIPpsnvh" ) ) != EOF )
+    while ( ( c = Extra_UtilGetopt( argc, argv, "TCIPpsnvMh" ) ) != EOF )
     {
         switch ( c )
         {
@@ -27834,6 +28002,15 @@ int Abc_CommandCec( Abc_Frame_t * pAbc, int argc, char ** argv )
             if ( nPartSize < 0 )
                 goto usage;
             break;
+        case 'M':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-M\" should be followed by a file name.\n" );
+                goto usage;
+            }
+            pMapFile = argv[globalUtilOptind];
+            globalUtilOptind++;
+            break;
         case 'p':
             fPartition ^= 1;
             break;
@@ -27862,6 +28039,9 @@ int Abc_CommandCec( Abc_Frame_t * pAbc, int argc, char ** argv )
     if ( !Abc_NtkPrepareTwoNtks( stdout, pNtk, pArgvNew, nArgcNew, &pNtk1, &pNtk2, &fDelete1, &fDelete2, 1 ) )
         return 1;
 
+    if ( pMapFile && fIgnoreNames )
+        Abc_Print( 0, "Warning: ignoring name map because option \"-n\" is enabled.\n" );
+
     if ( fIgnoreNames )
     {
         if ( !fDelete1 )
@@ -27876,6 +28056,18 @@ int Abc_CommandCec( Abc_Frame_t * pAbc, int argc, char ** argv )
         }
         Abc_NtkShortNames( pNtk1 );
         Abc_NtkShortNames( pNtk2 );
+    }
+    else if ( pMapFile )
+    {
+        Vec_Ptr_t * vPairs = Abc_CecNameMapRead( pMapFile, fVerbose );
+        if ( vPairs == NULL )
+        {
+            if ( fDelete1 ) Abc_NtkDelete( pNtk1 );
+            if ( fDelete2 ) Abc_NtkDelete( pNtk2 );
+            return 1;
+        }
+        Abc_CecApplyNameMap( pNtk1, pNtk2, vPairs, fVerbose );
+        Abc_CecNameMapFree( vPairs );
     }
 
     // perform equivalence checking
@@ -27897,12 +28089,13 @@ usage:
         strcpy( Buffer, "unused" );
     else
         sprintf(Buffer, "%d", nPartSize );
-    Abc_Print( -2, "usage: cec [-T num] [-C num] [-I num] [-P num] [-psnvh] <file1> <file2>\n" );
+    Abc_Print( -2, "usage: cec [-T num] [-C num] [-I num] [-P num] [-M file] [-psnvh] <file1> <file2>\n" );
     Abc_Print( -2, "\t         performs combinational equivalence checking\n" );
     Abc_Print( -2, "\t-T num : approximate runtime limit in seconds [default = %d]\n", nSeconds );
     Abc_Print( -2, "\t-C num : limit on the number of conflicts [default = %d]\n",    nConfLimit );
     Abc_Print( -2, "\t-I num : limit on the number of clause inspections [default = %d]\n", nInsLimit );
     Abc_Print( -2, "\t-P num : partition size for multi-output networks [default = %s]\n", Buffer );
+    Abc_Print( -2, "\t-M file: map CI/CO/latch names (pairs or Yosys \"Matched signal\" lines) [default = none]\n" );
     Abc_Print( -2, "\t-p     : toggle automatic partitioning [default = %s]\n", fPartition? "yes": "no" );
     Abc_Print( -2, "\t-s     : toggle \"SAT only\" and \"FRAIG + SAT\" [default = %s]\n", fSat? "SAT only": "FRAIG + SAT" );
     Abc_Print( -2, "\t-n     : toggle how CIs/COs are matched (by name or by order) [default = %s]\n", fIgnoreNames? "by order": "by name" );
