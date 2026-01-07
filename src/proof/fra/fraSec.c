@@ -73,7 +73,7 @@ void Fra_SecSetDefaultParams( Fra_Sec_t * p )
     p->fStopOnFirstFail  =       1;  // enables stopping after first output of a miter has failed to prove
     p->fUseNewProver     =       0;  // enables new prover
     p->fUsePdr           =       1;  // enables PDR
-    p->nPdrTimeout       =      60;  // enabled PDR timeout
+    p->nPdrTimeout       =    3600;  // enabled PDR timeout
     p->fSilent           =       0;  // disables all output
     p->fVerbose          =       0;  // enables verbose reporting of statistics
     p->fVeryVerbose      =       0;  // enables very verbose reporting  
