@@ -27856,7 +27856,7 @@ static Vec_Ptr_t * Abc_CecNameMapRead( char * pFileName, int fVerbose )
     fclose( pFile );
     if ( Vec_PtrSize(vPairs) == 0 )
     {
-        Abc_Print( -1, "Name map file \"%s\" has no usable entries.\n", pFileName );
+        Abc_Print( 0, "Name map file \"%s\" has no usable entries.\n", pFileName );
         Vec_PtrFree( vPairs );
         return NULL;
     }
