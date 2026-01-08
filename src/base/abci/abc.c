@@ -27754,212 +27754,6 @@ usage:
   SeeAlso     []
 
 ***********************************************************************/
-static char * Abc_CecNormalizeNameRange( char * pBegin, char * pEnd )
-{
-    char * pRes;
-    int i = 0;
-    while ( pBegin < pEnd && isspace((unsigned char)*pBegin) )
-        pBegin++;
-    while ( pEnd > pBegin && isspace((unsigned char)pEnd[-1]) )
-        pEnd--;
-    if ( pBegin < pEnd && *pBegin == '\\' )
-        pBegin++;
-    pRes = ABC_ALLOC( char, (pEnd - pBegin) + 1 );
-    for ( ; pBegin < pEnd; pBegin++ )
-        if ( !isspace((unsigned char)*pBegin) )
-            pRes[i++] = *pBegin;
-    pRes[i] = '\0';
-    return pRes;
-}
-
-static char * Abc_CecFindToken( char * pLine, const char * pTok, char ** ppTokEnd )
-{
-    size_t tok_len = strlen( pTok );
-    char * p = pLine;
-    while ( *p )
-    {
-        char * pStart;
-        while ( *p && isspace((unsigned char)*p) )
-            p++;
-        if ( *p == '\0' )
-            break;
-        pStart = p;
-        while ( *p && !isspace((unsigned char)*p) )
-            p++;
-        if ( (size_t)(p - pStart) == tok_len && !strncmp( pStart, pTok, tok_len ) )
-        {
-            if ( ppTokEnd )
-                *ppTokEnd = p;
-            return pStart;
-        }
-    }
-    return NULL;
-}
-
-static int Abc_CecParseYosysMatch( char * pLine, char ** ppName1, char ** ppName2 )
-{
-    char * pGoldTok, * pGoldEnd, * pGateTok, * pGateEndTok;
-    char * pGoldName, * pGateName, * pGateEnd;
-    pGoldTok = Abc_CecFindToken( pLine, "gold", &pGoldEnd );
-    if ( pGoldTok == NULL )
-        return 0;
-    pGateTok = Abc_CecFindToken( pGoldEnd, "gate", &pGateEndTok );
-    if ( pGateTok == NULL )
-        return 0;
-    pGoldName = pGoldEnd;
-    while ( *pGoldName && isspace((unsigned char)*pGoldName) )
-        pGoldName++;
-    pGateName = pGateEndTok;
-    while ( *pGateName && isspace((unsigned char)*pGateName) )
-        pGateName++;
-    pGateEnd = strstr( pGateName, "," );
-    if ( pGateEnd == NULL )
-        pGateEnd = pLine + strlen(pLine);
-    *ppName1 = Abc_CecNormalizeNameRange( pGateName, pGateEnd );
-    *ppName2 = Abc_CecNormalizeNameRange( pGoldName, pGateTok );
-    if ( (*ppName1)[0] == '\0' || (*ppName2)[0] == '\0' )
-    {
-        ABC_FREE( *ppName1 );
-        ABC_FREE( *ppName2 );
-        return 0;
-    }
-    return 1;
-}
-
-static int Abc_CecParsePair( char * pLine, char ** ppName1, char ** ppName2 )
-{
-    char * pStart;
-    char * pMid;
-    char * pEnd;
-    pStart = pLine;
-    while ( *pStart && isspace((unsigned char)*pStart) )
-        pStart++;
-    if ( *pStart == '\0' || *pStart == '#' )
-        return 0;
-    pMid = pStart;
-    while ( *pMid && !isspace((unsigned char)*pMid) )
-        pMid++;
-    if ( *pMid == '\0' )
-        return 0;
-    *pMid = '\0';
-    pMid++;
-    while ( *pMid && isspace((unsigned char)*pMid) )
-        pMid++;
-    if ( *pMid == '\0' )
-        return 0;
-    pEnd = pMid;
-    while ( *pEnd && !isspace((unsigned char)*pEnd) )
-        pEnd++;
-    *pEnd = '\0';
-    *ppName1 = Abc_CecNormalizeNameRange( pStart, pStart + strlen(pStart) );
-    *ppName2 = Abc_CecNormalizeNameRange( pMid, pMid + strlen(pMid) );
-    if ( (*ppName1)[0] == '\0' || (*ppName2)[0] == '\0' )
-    {
-        ABC_FREE( *ppName1 );
-        ABC_FREE( *ppName2 );
-        return 0;
-    }
-    return 1;
-}
-
-static Vec_Ptr_t * Abc_CecNameMapRead( char * pFileName, int fVerbose )
-{
-    FILE * pFile;
-    Vec_Ptr_t * vPairs;
-    char Buffer[4096];
-    pFile = fopen( pFileName, "r" );
-    if ( pFile == NULL )
-    {
-        Abc_Print( -1, "Cannot open name map file \"%s\".\n", pFileName );
-        return NULL;
-    }
-    vPairs = Vec_PtrAlloc( 100 );
-    while ( fgets( Buffer, sizeof(Buffer), pFile ) )
-    {
-        char * pName1 = NULL;
-        char * pName2 = NULL;
-        if ( Abc_CecParseYosysMatch( Buffer, &pName1, &pName2 ) ||
-             (strstr( Buffer, "Matched signal" ) == NULL &&
-              Abc_CecParsePair( Buffer, &pName1, &pName2 )) )
-        {
-            Vec_PtrPush( vPairs, pName1 );
-            Vec_PtrPush( vPairs, pName2 );
-        }
-    }
-    fclose( pFile );
-    // char * pName;
-    // int i = 0;
-    // Vec_PtrForEachEntry(char*, vPairs, pName, i){
-    //     Abc_Print(0, "%s\n",pName);
-    // }
-
-    if ( Vec_PtrSize(vPairs) == 0 )
-    {
-        Abc_Print( 0, "Name map file \"%s\" has no usable entries.\n", pFileName );
-        //Vec_PtrFree( vPairs );
-        return vPairs;
-    }
-    if ( fVerbose )
-        Abc_Print( 0, "Read %d name mappings from \"%s\".\n", Vec_PtrSize(vPairs)/2, pFileName );
-    return vPairs;
-}
-
-static void Abc_CecNameMapFree( Vec_Ptr_t * vPairs )
-{
-    char * pName;
-    int i;
-    Vec_PtrForEachEntry( char *, vPairs, pName, i )
-        ABC_FREE( pName );
-    Vec_PtrFree( vPairs );
-}
-
-static int Abc_CecApplyNameMap( Abc_Ntk_t * pNtk1, Abc_Ntk_t * pNtk2, Vec_Ptr_t * vPairs, int fVerbose )
-{
-    Abc_Obj_t * pObj;
-    int i, nApplied = 0, nMiss1 = 0, nMiss2 = 0, nConflicts = 0;
-    for ( i = 0; i < Vec_PtrSize(vPairs); i += 2 )
-    {
-        char * pName1 = (char *)Vec_PtrEntry( vPairs, i );
-        char * pName2 = (char *)Vec_PtrEntry( vPairs, i+1 );
-        pObj = Abc_NtkFindCi( pNtk1, pName1 );
-        if ( pObj == NULL )
-            pObj = Abc_NtkFindCo( pNtk1, pName1 );
-        if ( pObj == NULL )
-        {
-            nMiss1++;
-            if ( fVerbose )
-                Abc_Print( 0, "Name map: \"%s\" not found in network1.\n", pName1 );
-            continue;
-        }
-        if ( Abc_NtkFindCi( pNtk2, pName2 ) == NULL && Abc_NtkFindCo( pNtk2, pName2 ) == NULL )
-        {
-            nMiss2++;
-            if ( fVerbose )
-                Abc_Print( 0, "Name map: \"%s\" not found in network2.\n", pName2 );
-            continue;
-        }
-        if ( strcmp( Abc_ObjName(pObj), pName2 ) == 0 )
-            continue;
-        if ( Nm_ManFindIdByName( pNtk1->pManName, pName2, pObj->Type ) >= 0 &&
-             Nm_ManFindIdByName( pNtk1->pManName, pName2, pObj->Type ) != pObj->Id )
-        {
-            nConflicts++;
-            if ( fVerbose )
-                Abc_Print( 0, "Name map: \"%s\" already exists in network1.\n", pName2 );
-            continue;
-        }
-        Nm_ManDeleteIdName( pNtk1->pManName, pObj->Id );
-        Abc_ObjAssignName( pObj, pName2, NULL );
-        nApplied++;
-    }
-    if ( fVerbose || nMiss1 || nMiss2 || nConflicts )
-        Abc_Print( 0, "Name map: applied %d, missing1 %d, missing2 %d, conflicts %d.\n",
-            nApplied, nMiss1, nMiss2, nConflicts );
-    return nApplied;
-}
-
-
-
 int Abc_CommandCec( Abc_Frame_t * pAbc, int argc, char ** argv )
 {
     char Buffer[16];
@@ -27982,6 +27776,7 @@ int Abc_CommandCec( Abc_Frame_t * pAbc, int argc, char ** argv )
     extern void Abc_NtkCecFraig( Abc_Ntk_t * pNtk1, Abc_Ntk_t * pNtk2, int nSeconds, int fVerbose );
     extern void Abc_NtkCecFraigPart( Abc_Ntk_t * pNtk1, Abc_Ntk_t * pNtk2, int nSeconds, int nPartSize, int fVerbose );
     extern void Abc_NtkCecFraigPartAuto( Abc_Ntk_t * pNtk1, Abc_Ntk_t * pNtk2, int nSeconds, int fVerbose );
+    extern int Abc_CecApplyNameMap( Abc_Ntk_t * pNtk1, Abc_Ntk_t * pNtk2, char* pFileName, int fVerbose );
 
     pNtk = Abc_FrameReadNtk(pAbc);
     // set defaults
@@ -28100,15 +27895,10 @@ int Abc_CommandCec( Abc_Frame_t * pAbc, int argc, char ** argv )
     }
     else if ( pMapFile )
     {
-        Vec_Ptr_t * vPairs = Abc_CecNameMapRead( pMapFile, fVerbose );
-        if ( vPairs == NULL )
-        {
-            if ( fDelete1 ) Abc_NtkDelete( pNtk1 );
-            if ( fDelete2 ) Abc_NtkDelete( pNtk2 );
+        int v = Abc_CecApplyNameMap( pNtk1, pNtk2, pMapFile, fVerbose );
+        if(v < 0) {
             return 1;
         }
-        Abc_CecApplyNameMap( pNtk1, pNtk2, vPairs, fVerbose );
-        Abc_CecNameMapFree( vPairs );
     }
 
     // perform equivalence checking

@@ -33,6 +33,7 @@ SRC +=    src/base/abci/abc.c \
     src/base/abci/abcLut.c \
     src/base/abci/abcLutmin.c \
     src/base/abci/abcMap.c \
+    src/base/abci/abcMapName.cc \
     src/base/abci/abcMerge.c \
     src/base/abci/abcMfs.c \
     src/base/abci/abcMini.c \
