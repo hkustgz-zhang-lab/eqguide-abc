@@ -28117,8 +28117,10 @@ int Abc_CommandDSec( Abc_Frame_t * pAbc, int argc, char ** argv )
     int nArgcNew;
     int c, fCheck = 1;
     int fIgnoreNames;
+    char *pMapFile = NULL;
 
     extern int Abc_NtkDarSec( Abc_Ntk_t * pNtk1, Abc_Ntk_t * pNtk2, Fra_Sec_t * p );
+    extern int Abc_CecApplyNameMap( Abc_Ntk_t * pNtk1, Abc_Ntk_t * pNtk2, char* pFileName, int fVerbose );
 
     pNtk = Abc_FrameReadNtk(pAbc);
     // set defaults
@@ -28126,7 +28128,7 @@ int Abc_CommandDSec( Abc_Frame_t * pAbc, int argc, char ** argv )
     pSecPar->TimeLimit = 0;
     fIgnoreNames = 0;
     Extra_UtilGetoptReset();
-    while ( ( c = Extra_UtilGetopt( argc, argv, "FTarmfncvwh" ) ) != EOF )
+    while ( ( c = Extra_UtilGetopt( argc, argv, "FTMarmfncvwh" ) ) != EOF )
     {
         switch ( c )
         {
@@ -28151,6 +28153,15 @@ int Abc_CommandDSec( Abc_Frame_t * pAbc, int argc, char ** argv )
             globalUtilOptind++;
             if ( pSecPar->TimeLimit < 0 )
                 goto usage;
+            break;
+        case 'M':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-M\" should be followed by a file name.\n" );
+                goto usage;
+            }
+            pMapFile = argv[globalUtilOptind];
+            globalUtilOptind++;
             break;
         case 'a':
             pSecPar->fPhaseAbstract ^= 1;
@@ -28192,6 +28203,9 @@ int Abc_CommandDSec( Abc_Frame_t * pAbc, int argc, char ** argv )
         Abc_Print( -1, "The network has no latches. Used combinational command \"cec\".\n" );
         return 0;
     }
+    
+    if ( pMapFile && fIgnoreNames )
+        Abc_Print( 0, "Warning: ignoring name map because option \"-n\" is enabled.\n" );
 
     if ( fIgnoreNames )
     {
@@ -28208,6 +28222,13 @@ int Abc_CommandDSec( Abc_Frame_t * pAbc, int argc, char ** argv )
         Abc_NtkShortNames( pNtk1 );
         Abc_NtkShortNames( pNtk2 );
     }
+    else if ( pMapFile )
+    {
+        int v = Abc_CecApplyNameMap( pNtk1, pNtk2, pMapFile, pSecPar->fVerbose );
+        if(v < 0) {
+            return 1;
+        }
+    }
 
     // perform verification
     pAbc->Status = Abc_NtkDarSec( pNtk1, pNtk2, pSecPar );
@@ -28221,6 +28242,7 @@ usage:
     Abc_Print( -2, "\t         performs inductive sequential equivalence checking\n" );
     Abc_Print( -2, "\t-F num : the limit on the depth of induction [default = %d]\n", pSecPar->nFramesMax );
     Abc_Print( -2, "\t-T num : the approximate runtime limit (in seconds) [default = %d]\n", pSecPar->TimeLimit );
+    Abc_Print( -2, "\t-M file: map CI/CO/latch names (pairs or Yosys \"Matched signal\" lines) [default = none]\n" );
     Abc_Print( -2, "\t-a     : toggles the use of phase abstraction [default = %s]\n", pSecPar->fPhaseAbstract? "yes": "no" );
     Abc_Print( -2, "\t-r     : toggles forward retiming at the beginning [default = %s]\n", pSecPar->fRetimeFirst? "yes": "no" );
     Abc_Print( -2, "\t-m     : toggles min-register retiming [default = %s]\n", pSecPar->fRetimeRegs? "yes": "no" );
