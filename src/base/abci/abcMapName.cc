@@ -1,3 +1,23 @@
+/**CXXFile****************************************************************
+
+  FileName    [abcMapName.c]
+
+  SystemName  [ABC: Logic synthesis and verification system.]
+
+  PackageName [Network and node package.]
+
+  Synopsis    []
+
+  Author      [Bingjin Han]
+  
+  Affiliation []
+
+  Date        []
+
+  Revision    []
+
+***********************************************************************/
+
 #include "base/abc/abc.h"
 #include "misc/nm/nm.h"
 #include "misc/vec/vecPtr.h"
@@ -8,6 +28,10 @@
 #include <string.h>
 #include <unordered_map>
 #include <string>
+
+ABC_NAMESPACE_IMPL_START
+
+
 
 static char * Abc_CecNormalizeNameRange( char * pBegin, char * pEnd )
 {
@@ -223,8 +247,11 @@ extern "C" int Abc_CecApplyNameMap( Abc_Ntk_t * pNtk1, Abc_Ntk_t * pNtk2, char *
     for ( i = 0; i < Vec_PtrSize(vPairs); i += 2 ) { 
         std::string name1 = (char *)Vec_PtrEntry( vPairs, i );
         std::string name2 = (char *)Vec_PtrEntry( vPairs, i+1 );
-        if(name1 != name2)
+        if(name1 != name2){
             name_map[name1] = name2;
+            // Abc_Print(-2, "%s <----> %s\n", name1.c_str(),name2.c_str());
+        }
+            
     }
 
     Abc_Obj_t *pObj1, *pObj2;
@@ -292,3 +319,6 @@ extern "C" int Abc_CecApplyNameMap( Abc_Ntk_t * pNtk1, Abc_Ntk_t * pNtk2, char *
     Abc_CecNameMapFree(vPairs);
     return nApplied;
 }
+
+
+ABC_NAMESPACE_IMPL_END

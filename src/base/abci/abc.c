@@ -21,6 +21,7 @@
 #include "base/abc/abc.h"
 #include "base/main/main.h"
 #include "base/main/mainInt.h"
+#include "misc/util/abc_global.h"
 #include "proof/fraig/fraig.h"
 #include "opt/fxu/fxu.h"
 #include "opt/fxch/Fxch.h"
@@ -27754,6 +27755,21 @@ usage:
   SeeAlso     []
 
 ***********************************************************************/
+void Abc_NtkPrintBoxName(Abc_Ntk_t *pNtk) { 
+    Abc_Obj_t *pObj;
+    int i;
+    Abc_Print(-2, "-------------------------\n");
+    Abc_NtkForEachBox(pNtk, pObj, i) {
+        Abc_Print(-2, "Box #%d: %s\n", i, Abc_ObjName(Abc_ObjFanout0(pObj)));
+    }
+    // Abc_NtkForEachCi(pNtk, pObj, i) {
+    //     Abc_Print(-2, "Ci #%d: %s\n", i, Abc_ObjName(pObj));
+    // }
+    // Abc_NtkForEachCo(pNtk, pObj, i) {
+    //     Abc_Print(-2, "Co #%d: %s\n", i, Abc_ObjName(pObj));
+    // }
+}
+
 int Abc_CommandCec( Abc_Frame_t * pAbc, int argc, char ** argv )
 {
     char Buffer[16];
@@ -27895,11 +27911,21 @@ int Abc_CommandCec( Abc_Frame_t * pAbc, int argc, char ** argv )
     }
     else if ( pMapFile )
     {
+        // Abc_Print(-2, "-------------- Gate Bofore Name Mapping Start -------------\n");
+        // Abc_NtkPrintBoxName(pNtk1);
+        // Abc_Print(-2, "--------------  Gate Bofore Name Mapping End  -------------\n");
         int v = Abc_CecApplyNameMap( pNtk1, pNtk2, pMapFile, fVerbose );
         if(v < 0) {
             return 1;
         }
+        // Abc_Print(-2, "-------------- Gate After Name Mapping Start -------------\n");
+        // Abc_NtkPrintBoxName(pNtk1);
+        // Abc_Print(-2, "--------------  Gate After Name Mapping End  -------------\n");
     }
+
+    // Abc_Print(-2, "-------------- Gold Start -------------\n");
+    // Abc_NtkPrintBoxName(pNtk2);
+    // Abc_Print(-2, "--------------  Gold End  -------------\n");
 
     // perform equivalence checking
     if ( fPartition )
