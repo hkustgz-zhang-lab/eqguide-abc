@@ -1618,6 +1618,8 @@ void Abc_NtkFixNonDrivenNets( Abc_Ntk_t * pNtk )
             }
         }
         printf( "\n" );
+        Vec_PtrForEachEntry( Abc_Obj_t *, vNets, pNet, i )
+            printf( "ABC_CONST0_NET %s %s\n", pNtk->pName, Abc_ObjName(pNet) );
     }
     Vec_PtrFree( vNets );
 }
@@ -2621,4 +2623,3 @@ Abc_Ntk_t * Abc_NtkCreateFromGias( char * pName, Vec_Ptr_t * vGias, Gia_Man_t * 
 
 
 ABC_NAMESPACE_IMPL_END
-
